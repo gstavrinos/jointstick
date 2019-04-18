@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 import os
+import yaml
 import rospy
+import datetime
+import threading
 from sensor_msgs.msg import Joy
 from controller_manager_msgs.srv import ListControllers
+
+ui = [None] # mutable hack. Thanks python!
 
 terminal_text = ""
 controllers = []
@@ -13,24 +18,25 @@ saved_buti = -1
 read_joy = False
 keepItUp = True
 
+config_file_location = ""
+
 YES = ["YES", "yes", "Y", "y"]
 NO = ["NO", "no", "N", "n"]
 QUIT = ["QUIT", "quit", "Q", "q"]
+SAVE = ["SAVE", "save", "S", "s"]
 
 class JoyAction():
-    buttons = []
-    axes = []
+    button = -1
+    axis = -1
     step = 0
-    limit = 0
 
-    def __init__(self, b, a, s, t):
-        self.buttons = b
-        self.axes = a
+    def __init__(self, b, a, s):
+        self.button = b
+        self.axis = a
         self.step = s
-        self.limit = l
 
     def __repr__(self):
-        return "Buttons: {},\nAxes: {},\nStep: {},\nLimit: {}".format(self.buttons, self.axes, self.step, self.limit)
+        return "\nButton: {},\nAxis: {},\nStep: {}\n".format(self.button, self.axis, self.step)
 
 class Controller():
     name = ""
@@ -44,6 +50,30 @@ class Controller():
 
     def __repr__(self):
         return "\nName: {},\nType: {},\nActions:{}\n".format(self.name, self.type, self.joyActions)
+
+def joyActionsToDict(actions):
+    d = dict()
+    for i, action in enumerate(actions):
+        d[i] = {"button": action.button,
+                "axis": action.axis,
+                "step": action.step
+                }
+    return d
+
+def controllersToDict():
+    d = dict()
+    for controller in controllers:
+        if controller.joyActions:
+            d[controller.name] = {"type": controller.type,
+                                    "actions": joyActionsToDict(controller.joyActions)
+                                }
+    return d
+
+def save():
+    print("Saving...")
+    with open(config_file_location+ os.sep+"config_"+datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")+".yaml", "w") as outfile:
+        yaml.dump(controllersToDict(), outfile, default_flow_style=False)
+    print("Success!")
 
 def youTalkinToMe(prompt, accepted_ans):
     while(True):
@@ -60,6 +90,31 @@ def youTalkinToMe(prompt, accepted_ans):
         if not accepted_ans or inp in accepted_ans:
             return inp
 
+def youTalkinToMeAboutFloats(prompt):
+    while(True):
+        print(prompt)
+        inp = ""
+        try:
+            # Python 2
+            inp = raw_input()
+        except:
+            # Python 3
+            inp = input()
+        try:
+            return float(inp)
+        except:
+            print("Please provide a number!")
+
+def youTalkinToMeAboutThreads(prompt):
+    global ui
+    print(prompt)
+    try:
+        # Python 2
+        ui[0] = raw_input()
+    except:
+        # Python 3
+        ui[0] = input()
+
 def joyInLife(msg):
     global saved_axi, saved_buti
     max_ax = max(map(abs, msg.axes))
@@ -72,8 +127,10 @@ def joyInLife(msg):
     if 1 in msg.buttons:
         button_i = msg.buttons.index(1)
     combo = None
-    # TODO clear saved when a new button/axis is used
-    #if button_i != -1 and button_i != saved_buti:
+    if button_i != -1 and button_i != saved_buti:
+        saved_axi = -1
+    if axis_i != -1 and axis_i != saved_axi:
+        saved_buti = -1
     saved_buti = button_i if button_i != -1 else saved_buti
     saved_axi = axis_i if axis_i != -1 else saved_axi
     if saved_axi >= 0:
@@ -86,17 +143,18 @@ def joyInLife(msg):
     return combo
 
 def joyCallback(msg):
-    global read_joy, curr_controller
     if read_joy:
         clear()
         print("Controls for {}".format(curr_controller.name))
         print(joyInLife(msg))
+        if saved_axi != -1 or saved_buti != -1:
+            print("Press enter on your keyboard to continue with the current configuration...")
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
 def configureJoyActions():
-    global read_joy, keepItUp, curr_controller
+    global read_joy, keepItUp, curr_controller, saved_buti, saved_axi, ui
     ans = youTalkinToMe("Do you want to see all the discovered controllers?", YES+NO+QUIT)
     if ans in YES:
         print(controllers)
@@ -108,18 +166,62 @@ def configureJoyActions():
     youTalkinToMe("Press any enter to continue...", [])
     clear()
     for controller in controllers:
-        ans = youTalkinToMe("Do you want to assign a joystick command to {}?".format(controller.name), YES+NO+QUIT)
-        if ans in QUIT:
+        cnt = 0
+        while(True):
+            ans = ""
+            if cnt == 0:
+                ans = youTalkinToMe("Do you want to assign a joystick command to {}?".format(controller.name), YES+NO+QUIT)
+            else:
+                ans = youTalkinToMe("Do you want to assign another joystick command to {}?".format(controller.name), YES+NO+QUIT)
+            if ans in QUIT:
+                keepItUp = False
+                return
+            elif ans in YES:
+                curr_controller = controller
+                read_joy = True
+                print("Now use your controller to set a new configuration...")
+                t = threading.Thread(target=youTalkinToMeAboutThreads, args=("Don't touch your keyboard now!",))
+                t.deamon = True
+                t.start()
+                while read_joy and keepItUp and not rospy.is_shutdown():
+                    if ui[0] is not None and (saved_axi != -1 or saved_buti != -1):
+                        read_joy = False
+                step = youTalkinToMeAboutFloats("Please provide a joint step value:")
+
+                ans = youTalkinToMe("Do you want to save the current configuration?", YES+NO+QUIT)
+                if ans in YES:
+                    controller.joyActions.append(JoyAction(saved_buti, saved_axi, step))
+                    print("Saved! (Not on disk yet!)")
+                    print("---")
+                    cnt += 1
+                elif ans in QUIT:
+                    keepItUp = False
+                    return
+                ui = [None]
+                saved_buti = -1
+                saved_axi = -1
+            elif ans in NO:
+                break
+    keepItUp = False
+
+    while(True):
+        ans = youTalkinToMe("Do you want to save your configuration?", YES+NO+QUIT)
+        if ans in YES:
+            save()
+        elif ans in QUIT:
             keepItUp = False
-            return
-        elif ans in YES:
-            curr_controller = controller
-            read_joy = True
-            while read_joy and keepItUp and not rospy.is_shutdown():
-                pass
+            break
+        elif ans in NO:
+            ans = youTalkinToMe("Are you sure?", YES+NO+QUIT)
+            if ans in YES or ans in QUIT:
+                keepItUp = False
+                break
 
 def main():
+    global config_file_location
     rospy.init_node("jointstick_setup")
+    config_file_location = rospy.get_param("config_file_location", os.path.expanduser("~"))
+    print("Config file save location was set as: {}".format(config_file_location))
     rospy.Subscriber("/joy", Joy, joyCallback)
     controllers_srv = rospy.ServiceProxy("controller_manager/list_controllers", ListControllers)
 
