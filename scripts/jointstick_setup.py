@@ -6,6 +6,7 @@ import datetime
 import threading
 from sensor_msgs.msg import Joy
 from controller_manager_msgs.srv import ListControllers
+from helper import JoyAction, Controller
 
 ui = [None] # mutable hack. Thanks python!
 
@@ -24,32 +25,6 @@ YES = ["YES", "yes", "Y", "y"]
 NO = ["NO", "no", "N", "n"]
 QUIT = ["QUIT", "quit", "Q", "q"]
 SAVE = ["SAVE", "save", "S", "s"]
-
-class JoyAction():
-    button = -1
-    axis = -1
-    step = 0
-
-    def __init__(self, b, a, s):
-        self.button = b
-        self.axis = a
-        self.step = s
-
-    def __repr__(self):
-        return "\nButton: {},\nAxis: {},\nStep: {}\n".format(self.button, self.axis, self.step)
-
-class Controller():
-    name = ""
-    type = ""
-    joyActions = []
-
-    def __init__(self, n, t, ja):
-        self.name = n
-        self.type = t
-        self.joyActions = ja
-
-    def __repr__(self):
-        return "\nName: {},\nType: {},\nActions:{}\n".format(self.name, self.type, self.joyActions)
 
 def joyActionsToDict(actions):
     d = dict()
@@ -186,6 +161,7 @@ def configureJoyActions():
                 while read_joy and keepItUp and not rospy.is_shutdown():
                     if ui[0] is not None and (saved_axi != -1 or saved_buti != -1):
                         read_joy = False
+                # TODO prompt user to select which joint to move
                 step = youTalkinToMeAboutFloats("Please provide a joint step value:")
 
                 ans = youTalkinToMe("Do you want to save the current configuration?", YES+NO+QUIT)
@@ -232,7 +208,7 @@ def main():
     c = controllers_srv().controller
 
     for controller in c:
-        controllers.append(Controller(controller.name, controller.type, []))
+        controllers.append(Controller(controller.name, controller.type, [], controller.claimed_resources[0].resources))
 
     print("Done!")
 

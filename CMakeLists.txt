@@ -3,7 +3,6 @@ project(jointstick)
 
 find_package(catkin REQUIRED COMPONENTS
     controller_manager_msgs
-    ros_controllers
     sensor_msgs
     nav_msgs
     std_msgs
