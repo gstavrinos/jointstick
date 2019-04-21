@@ -5,8 +5,11 @@ import rospy
 import datetime
 import threading
 from sensor_msgs.msg import Joy
-from controller_manager_msgs.srv import ListControllers
+from std_msgs.msg import Float64
+from geometry_msgs.msg import Twist
 from helper import JoyAction, Controller
+from trajectory_msgs.msg import JointTrajectory
+from controller_manager_msgs.srv import ListControllers
 
 ui = [None] # mutable hack. Thanks python!
 
@@ -26,12 +29,17 @@ NO = ["NO", "no", "N", "n"]
 QUIT = ["QUIT", "quit", "Q", "q"]
 SAVE = ["SAVE", "save", "S", "s"]
 
+supported_controllers = ["effort_controllers/JointPositionController",
+                        "position_controllers/JointTrajectoryController",
+                        "diff_drive_controller/DiffDriveController"]
+
 def joyActionsToDict(actions):
     d = dict()
     for i, action in enumerate(actions):
         d[i] = {"button": action.button,
                 "axis": action.axis,
-                "step": action.step
+                "step": action.step,
+                "joint": action.joint
                 }
     return d
 
@@ -142,42 +150,45 @@ def configureJoyActions():
     clear()
     for controller in controllers:
         cnt = 0
-        while(True):
-            ans = ""
-            if cnt == 0:
-                ans = youTalkinToMe("Do you want to assign a joystick command to {}?".format(controller.name), YES+NO+QUIT)
-            else:
-                ans = youTalkinToMe("Do you want to assign another joystick command to {}?".format(controller.name), YES+NO+QUIT)
-            if ans in QUIT:
-                keepItUp = False
-                return
-            elif ans in YES:
-                curr_controller = controller
-                read_joy = True
-                print("Now use your controller to set a new configuration...")
-                t = threading.Thread(target=youTalkinToMeAboutThreads, args=("Don't touch your keyboard now!",))
-                t.deamon = True
-                t.start()
-                while read_joy and keepItUp and not rospy.is_shutdown():
-                    if ui[0] is not None and (saved_axi != -1 or saved_buti != -1):
-                        read_joy = False
-                # TODO prompt user to select which joint to move
-                step = youTalkinToMeAboutFloats("Please provide a joint step value:")
-
-                ans = youTalkinToMe("Do you want to save the current configuration?", YES+NO+QUIT)
-                if ans in YES:
-                    controller.joyActions.append(JoyAction(saved_buti, saved_axi, step))
-                    print("Saved! (Not on disk yet!)")
-                    print("---")
-                    cnt += 1
-                elif ans in QUIT:
+        if controller.type in supported_controllers:
+            while(True):
+                ans = ""
+                if cnt == 0:
+                    ans = youTalkinToMe("Do you want to assign a joystick command to {}?".format(controller.name), YES+NO+QUIT)
+                else:
+                    ans = youTalkinToMe("Do you want to assign another joystick command to {}?".format(controller.name), YES+NO+QUIT)
+                if ans in QUIT:
                     keepItUp = False
                     return
-                ui = [None]
-                saved_buti = -1
-                saved_axi = -1
-            elif ans in NO:
-                break
+                elif ans in YES:
+                    curr_controller = controller
+                    for joint in controller.joints:
+                        ans = youTalkinToMe("Do you want to assign a joystick command to {}?".format(joint), YES+NO+QUIT)
+                        if ans in YES:
+                            cnt += 1
+                            read_joy = True
+                            print("Now use your controller to set a new configuration...")
+                            t = threading.Thread(target=youTalkinToMeAboutThreads, args=("Don't touch your keyboard now!",))
+                            t.deamon = True
+                            t.start()
+                            while read_joy and keepItUp and not rospy.is_shutdown():
+                                if ui[0] is not None and (saved_axi != -1 or saved_buti != -1):
+                                    read_joy = False
+                            step = youTalkinToMeAboutFloats("Please provide a joint step value:")
+
+                            ans = youTalkinToMe("Do you want to save the current configuration?", YES+NO+QUIT)
+                            if ans in YES:
+                                controller.joyActions.append(JoyAction(saved_buti, saved_axi, step))
+                                print("Saved! (Not on disk yet!)")
+                                print("---")
+                            elif ans in QUIT:
+                                keepItUp = False
+                                return
+                            ui = [None]
+                            saved_buti = -1
+                            saved_axi = -1
+                elif ans in NO:
+                    break
     keepItUp = False
 
     while(True):
