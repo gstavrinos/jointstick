@@ -1,5 +1,8 @@
 # A file with lists of supported controllers and other
 # categorisations on those controllers
+from std_msgs.msg import Float64
+from geometry_msgs.msg import Twist
+from trajectory_msgs.msg import JointTrajectory
 
 # A list of controllers that this script can handle
 supported_controllers = ["effort_controllers/JointPositionController",
@@ -31,5 +34,11 @@ topic_extension = {
                     "position_controllers/JointTrajectoryController": "/command",
                     "diff_drive_controller/DiffDriveController": "/cmd_vel"
                 }
+
+controller_type_correspondence = {
+                        "effort_controllers/JointPositionController": Float64,
+                        "position_controllers/JointTrajectoryController": JointTrajectory,
+                        "diff_drive_controller/DiffDriveController": Twist
+                    }
 
 
