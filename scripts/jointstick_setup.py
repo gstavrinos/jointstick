@@ -7,42 +7,42 @@ import threading
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float64
 from geometry_msgs.msg import Twist
-from helper import JoyAction, Controller
 from trajectory_msgs.msg import JointTrajectory
 from controller_manager_msgs.srv import ListControllers
 
+# Imports from custom files of this package
+from helper import *
+from controllers_info import *
+
 ui = [None] # mutable hack. Thanks python!
 
-terminal_text = ""
-controllers = []
-curr_controller = None
-saved_axi = -1
-saved_buti = -1
+# Translate Twist message fields to selection text
+def twistToText():
+    m = "Choose an axis to move with your current joy binding:\n"
+    m += "0. linear.x\t1. linear.y\t2. linear.z\n"
+    m += "3. angular.x\t4. angular.y\t5. angular.z\n"
+    return m
 
-read_joy = False
-keepItUp = True
+# Translate JointTrajectory message fields to selection text
+def jointTrajToText():
+    m = "Choose a category to move with your current joy binding:\n"
+    m += "0. position\t1. velocity\n"
+    m += "2. acceleration\t3. effort\n"
+    return m
 
-config_file_location = ""
-
-YES = ["YES", "yes", "Y", "y"]
-NO = ["NO", "no", "N", "n"]
-QUIT = ["QUIT", "quit", "Q", "q"]
-SAVE = ["SAVE", "save", "S", "s"]
-
-supported_controllers = ["effort_controllers/JointPositionController",
-                        "position_controllers/JointTrajectoryController",
-                        "diff_drive_controller/DiffDriveController"]
-
+# Translate a joyAction object to a dict for yaml
 def joyActionsToDict(actions):
     d = dict()
     for i, action in enumerate(actions):
         d[i] = {"button": action.button,
                 "axis": action.axis,
-                "step": action.step,
-                "joint": action.joint
+                "value": action.value,
+                "joint": action.joint,
+                "msg_field": action.msg_field
                 }
     return d
 
+# Translate the list of controllers to a dict for yaml
 def controllersToDict():
     d = dict()
     for controller in controllers:
@@ -52,12 +52,16 @@ def controllersToDict():
                                 }
     return d
 
+# Save the list of controllers to a .yaml file
 def save():
     print("Saving...")
-    with open(config_file_location+ os.sep+"config_"+datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")+".yaml", "w") as outfile:
+    filename = config_file_location+ os.sep+"config_"+datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")+".yaml"
+    with open(filename, "w") as outfile:
         yaml.dump(controllersToDict(), outfile, default_flow_style=False)
     print("Success!")
+    print("Saved at {}".format(filename))
 
+# Python agnostic user input with accepted answers support
 def youTalkinToMe(prompt, accepted_ans):
     while(True):
         print(prompt)
@@ -73,6 +77,7 @@ def youTalkinToMe(prompt, accepted_ans):
         if not accepted_ans or inp in accepted_ans:
             return inp
 
+# Python agnostic user input for floats
 def youTalkinToMeAboutFloats(prompt):
     while(True):
         print(prompt)
@@ -88,6 +93,7 @@ def youTalkinToMeAboutFloats(prompt):
         except:
             print("Please provide a number!")
 
+# Python agnostic user input to be run in a thread
 def youTalkinToMeAboutThreads(prompt):
     global ui
     print(prompt)
@@ -98,6 +104,9 @@ def youTalkinToMeAboutThreads(prompt):
         # Python 3
         ui[0] = input()
 
+# Translate user joystick input to human readable text
+# Also, offer the expected behaviour when unpressing buttons/axes
+# or when pressing new buttons/axes that need to delete old ones
 def joyInLife(msg):
     global saved_axi, saved_buti
     max_ax = max(map(abs, msg.axes))
@@ -125,6 +134,7 @@ def joyInLife(msg):
             combo = "[Button{}]".format(saved_buti)
     return combo
 
+# The joystic callback
 def joyCallback(msg):
     if read_joy:
         clear()
@@ -133,9 +143,11 @@ def joyCallback(msg):
         if saved_axi != -1 or saved_buti != -1:
             print("Press enter on your keyboard to continue with the current configuration...")
 
+# OS agnostic terminal clearance
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
 
+# The main setup procedure
 def configureJoyActions():
     global read_joy, keepItUp, curr_controller, saved_buti, saved_axi, ui
     ans = youTalkinToMe("Do you want to see all the discovered controllers?", YES+NO+QUIT)
@@ -163,7 +175,11 @@ def configureJoyActions():
                 elif ans in YES:
                     curr_controller = controller
                     for joint in controller.joints:
-                        ans = youTalkinToMe("Do you want to assign a joystick command to {}?".format(joint), YES+NO+QUIT)
+                        msg_field = ""
+                        if controller.type in ignore_controller_joints:
+                            ans = "y"
+                        else:
+                            ans = youTalkinToMe("[{}] Do you want to assign a joystick command to {}?".format(controller.name, joint), YES+NO+QUIT)
                         if ans in YES:
                             cnt += 1
                             read_joy = True
@@ -174,11 +190,23 @@ def configureJoyActions():
                             while read_joy and keepItUp and not rospy.is_shutdown():
                                 if ui[0] is not None and (saved_axi != -1 or saved_buti != -1):
                                     read_joy = False
-                            step = youTalkinToMeAboutFloats("Please provide a joint step value:")
 
-                            ans = youTalkinToMe("Do you want to save the current configuration?", YES+NO+QUIT)
+                            if controller.type in twist_controllers:
+                                ans = youTalkinToMe(twistToText(), list(twisty_dict.keys()))
+                                msg_field = twisty_dict[ans]
+                            elif controller.type in joint_traj_controllers:
+                                ans = youTalkinToMe(jointTrajToText(), list(map(str,twisty_dict.keys())))
+                                msg_field = jt_dict[ans]
+
+                            val = -1
+                            if controller.type not in non_step_controllers:
+                                val = youTalkinToMeAboutFloats("Please provide a joint step value:")
+                            else:
+                                val = youTalkinToMeAboutFloats("Please provide a cmd_vel value:")
+
+                            ans = youTalkinToMe("Do you want to save the current joy binding?", YES+NO+QUIT)
                             if ans in YES:
-                                controller.joyActions.append(JoyAction(saved_buti, saved_axi, step))
+                                controller.joyActions.append(JoyAction(saved_buti, saved_axi, val, joint, msg_field))
                                 print("Saved! (Not on disk yet!)")
                                 print("---")
                             elif ans in QUIT:
@@ -187,23 +215,24 @@ def configureJoyActions():
                             ui = [None]
                             saved_buti = -1
                             saved_axi = -1
+                            if controller.type in ignore_controller_joints:
+                                break
                 elif ans in NO:
                     break
-    keepItUp = False
 
-    while(True):
+    while(keepItUp):
         ans = youTalkinToMe("Do you want to save your configuration?", YES+NO+QUIT)
         if ans in YES:
             save()
+            keepItUp = False
         elif ans in QUIT:
             keepItUp = False
-            break
         elif ans in NO:
             ans = youTalkinToMe("Are you sure?", YES+NO+QUIT)
             if ans in YES or ans in QUIT:
                 keepItUp = False
-                break
 
+# Initialisations and other boring stuff
 def main():
     global config_file_location
     rospy.init_node("jointstick_setup")
