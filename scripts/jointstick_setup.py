@@ -5,9 +5,6 @@ import rospy
 import datetime
 import threading
 from sensor_msgs.msg import Joy
-from std_msgs.msg import Float64
-from geometry_msgs.msg import Twist
-from trajectory_msgs.msg import JointTrajectory
 from controller_manager_msgs.srv import ListControllers
 
 # Imports from custom files of this package
