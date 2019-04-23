@@ -16,6 +16,7 @@ from helper import Controller, JoyAction
 controllers = []
 joint_states = None
 publishers = dict()
+actions_to_exec = []
 
 # Just the joint state callback
 def jointStatesCallback(msg):
@@ -24,16 +25,28 @@ def jointStatesCallback(msg):
 
 # Just the joy callback
 def joyCallback(msg):
-    print msg
+    bindingsOfJoy(msg)
+    print actions_to_exec
 
 # Initialize publisher objects for all controller with joy bindings
-def fixPublishers():
+def initPublishers():
     global publishers
     for controller in controllers:
         publishers[controller.name] = rospy.Publisher(
                         controller.name+topic_extension[controller.type],
                         controller_type_correspondence[controller.type],
                         queue_size=1)
+
+def bindingsOfJoy(msg):
+    global actions_to_exec
+    actions_to_exec = []
+    pressed_buttons = [x for x, e in enumerate(msg.buttons) if e != 0]
+    pressed_axes = [x for x, e in enumerate(msg.axes) if e != 0]
+    for controller in controllers:
+        for ja in controller.joyActions:
+            if ((ja.axis in pressed_axes) or (not pressed_axes and ja.axis == -1)) and\
+            ((ja.button in pressed_buttons) or (not pressed_buttons and ja.button == -1)):
+                actions_to_exec.append(ja)
 
 # Translate a dict record to a JoyAction object
 def joyActionFromDict(dict_record):
@@ -85,7 +98,7 @@ def main():
     # Delete controllers that do not have any joy bindings
     controllers = [x for x in controllers if x.joyActions]
 
-    fixPublishers()
+    initPublishers()
 
     rospy.Subscriber("/joy", Joy, joyCallback)
     rospy.Subscriber("/joint_states", JointState, jointStatesCallback)
