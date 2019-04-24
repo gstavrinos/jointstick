@@ -27,8 +27,6 @@ jt_dict = {
             "3": "effort"
         }
 
-
-
 # Expected user input
 YES = ["YES", "yes", "Y", "y"]
 NO = ["NO", "no", "N", "n"]
