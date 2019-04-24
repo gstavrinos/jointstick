@@ -3,6 +3,7 @@ import os
 import yaml
 import time
 import rospy
+import threading
 from std_msgs.msg import Float64
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy, JointState
@@ -13,10 +14,16 @@ from controller_manager_msgs.srv import ListControllers
 from controllers_info import *
 from helper import Controller, JoyAction
 
-controllers = []
 joint_states = None
+joy_msg = None
+
+controllers = []
 publishers = dict()
 actions_to_exec = []
+rate = 10# Hz
+
+# Thread flag
+kill = False
 
 # Just the joint state callback
 def jointStatesCallback(msg):
@@ -25,8 +32,9 @@ def jointStatesCallback(msg):
 
 # Just the joy callback
 def joyCallback(msg):
+    global joy_msg
+    joy_msg = msg
     bindingsOfJoy(msg)
-    print actions_to_exec
 
 # Initialize publisher objects for all controller with joy bindings
 def initPublishers():
@@ -37,6 +45,54 @@ def initPublishers():
                         controller_type_correspondence[controller.type],
                         queue_size=1)
 
+# With the action_to_exec at hand, send some commands to the robot! (in a new thread)
+def execCommands():
+    while(not kill):
+        actions = dict()
+        for action, controller in actions_to_exec:
+            if controller.type == "diff_drive_controller/DiffDriveController":
+                msg = Twist()
+                if action.msg_field == "linear.x":
+                    msg.linear.x = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                elif action.msg_field == "linear.y":
+                    msg.linear.y = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                elif action.msg_field == "linear.z":
+                    msg.linear.z = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                elif action.msg_field == "angular.x":
+                    msg.angular.x = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                elif action.msg_field == "angular.y":
+                    msg.angular.y = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                elif action.msg_field == "angular.z":
+                    msg.angular.z = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                if controller not in actions:
+                    actions[controller] = [msg]
+                else:
+                    actions[controller].append(msg)
+            elif controller.type == "effort_controllers/JointPositionController":
+                v = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                stepIt = joint_states.position[joint_states.name.index(action.joint)] + v
+                publishers[controller.name].publish(stepIt)
+            elif controller.type == "position_controllers/JointTrajectoryController":
+                # TODO
+                pass
+        for controller in actions:
+            msg = None
+            if controller.type == "diff_drive_controller/DiffDriveController":
+                msg = Twist()
+                for action in actions[controller]:
+                    msg.linear.x = action.linear.x if abs(action.linear.x) > abs(msg.linear.x) else msg.linear.x
+                    msg.linear.y = action.linear.y if abs(action.linear.y) > abs(msg.linear.y) else msg.linear.y
+                    msg.linear.z = action.linear.z if abs(action.linear.z) > abs(msg.linear.z) else msg.linear.z
+                    msg.angular.x = action.angular.x if abs(action.angular.x) > abs(msg.angular.x) else msg.angular.x
+                    msg.angular.y = action.angular.y if abs(action.angular.y) > abs(msg.angular.y) else msg.angular.y
+                    msg.angular.z = action.angular.z if abs(action.angular.z) > abs(msg.angular.z) else msg.angular.z
+            elif controller.type == "position_controllers/JointTrajectoryController":
+                # TODO
+                pass
+            publishers[controller.name].publish(msg)
+        time.sleep(1/rate)
+
+# Save in actions_to_exec the joy bindings that should be used to send a command to a joint
 def bindingsOfJoy(msg):
     global actions_to_exec
     actions_to_exec = []
@@ -46,7 +102,7 @@ def bindingsOfJoy(msg):
         for ja in controller.joyActions:
             if ((ja.axis in pressed_axes) or (not pressed_axes and ja.axis == -1)) and\
             ((ja.button in pressed_buttons) or (not pressed_buttons and ja.button == -1)):
-                actions_to_exec.append(ja)
+                actions_to_exec.append((ja, controller))
 
 # Translate a dict record to a JoyAction object
 def joyActionFromDict(dict_record):
@@ -70,7 +126,7 @@ def controllersFromYAML(yaml_mess):
 
 # Initialisations and other boring stuff
 def main():
-    global controllers
+    global controllers, kill, rate
     rospy.init_node("jointstick_setup")
     config_file = rospy.get_param("config_file", "-")
     config_file = "/home/gstavrinos/config_22-04-2019_15-52-40.yaml"
@@ -80,6 +136,7 @@ def main():
     elif not os.path.isfile(config_file):
         print("Config file {} not found. Exiting...").format(config_file)
         return
+    rate = rospy.get_param("rate", 10)
     controllers_srv = rospy.ServiceProxy("controller_manager/list_controllers", ListControllers)
 
     print("Reading available controllers....")
@@ -102,7 +159,14 @@ def main():
 
     rospy.Subscriber("/joy", Joy, joyCallback)
     rospy.Subscriber("/joint_states", JointState, jointStatesCallback)
+
+    t = threading.Thread(target=execCommands)
+    t.deamon = True
+    t.start()
+
     while not rospy.is_shutdown():
         rospy.spin()
+
+    kill = True
 
 main()
