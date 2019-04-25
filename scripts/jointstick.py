@@ -7,7 +7,7 @@ import threading
 from std_msgs.msg import Float64
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy, JointState
-from trajectory_msgs.msg import JointTrajectory
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from controller_manager_msgs.srv import ListControllers
 
 # Imports from custom files of this package
@@ -39,6 +39,7 @@ def joyCallback(msg):
 # Initialize publisher objects for all controller with joy bindings
 def initPublishers():
     global publishers
+    # TODO incorporate topic names in joy action to allow for easy configuration
     for controller in controllers:
         publishers[controller.name] = rospy.Publisher(
                         controller.name+topic_extension[controller.type],
@@ -73,8 +74,28 @@ def execCommands():
                 stepIt = joint_states.position[joint_states.name.index(action.joint)] + v
                 publishers[controller.name].publish(stepIt)
             elif controller.type == "position_controllers/JointTrajectoryController":
-                # TODO
-                pass
+                msg = JointTrajectory()
+                msg.points.append(JointTrajectoryPoint())
+                v = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
+                stepIt = joint_states.position[joint_states.name.index(action.joint)] + v
+                for joint in controller.joints:
+                    msg.joint_names.append(joint)
+                    msg.points[0].positions.append(joint_states.position[joint_states.name.index(joint)])
+                    msg.points[0].velocities.append(joint_states.velocity[joint_states.name.index(joint)])
+                    msg.points[0].effort.append(joint_states.effort[joint_states.name.index(joint)])
+                if action.msg_field == "position":
+                    msg.points[0].positions[msg.joint_names.index(action.joint)] = stepIt
+                elif action.msg_field == "velocity":
+                    msg.points[0].velocities[msg.joint_names.index(action.joint)] = stepIt
+                elif action.msg_field == "acceleration":
+                    msg.points[0].accelerations[msg.joint_names.index(action.joint)] = stepIt
+                elif action.msg_field == "effort":
+                    msg.points[0].effort[msg.joint_names.index(action.joint)] = stepIt
+                if controller not in actions:
+                    actions[controller] = [msg]
+                else:
+                    actions[controller].append(msg)
+
         for controller in actions:
             msg = None
             if controller.type == "diff_drive_controller/DiffDriveController":
@@ -87,10 +108,23 @@ def execCommands():
                     msg.angular.y = action.angular.y if abs(action.angular.y) > abs(msg.angular.y) else msg.angular.y
                     msg.angular.z = action.angular.z if abs(action.angular.z) > abs(msg.angular.z) else msg.angular.z
             elif controller.type == "position_controllers/JointTrajectoryController":
-                # TODO
-                pass
+                for action in actions[controller]:
+                    if msg is None:
+                        msg = JointTrajectory()
+                        # TODO investigate is stamp is needed
+                        # msg.header.stamp = rospy.Time.now()
+                        msg.joint_names = action.joint_names
+                        msg.points = action.points
+                        msg.points[0].time_from_start = rospy.Duration(1.0/rate)
+                    else:
+                        for i in range(len(action.points[0].positions)):
+                            msg.points[0].positions[i] = action.points[0].positions[i] if action.points[0].positions[i] != joint_states.position[joint_states.name.index(msg.joint_names[i])] else msg.points[0].positions[i]
+                            msg.points[0].velocities[i] = action.points[0].velocities[i] if action.points[0].velocities[i] != joint_states.velocity[joint_states.name.index(msg.joint_names[i])] else msg.points[0].velocities[i]
+                            # TODO handle accelerations
+                            # msg.point.accelerations[i] = action.points[0].accelerations[i] if action.points[0].accelerations[i] != joint_states.acceleration[joint_states.name.index(msg.joint_names[i])] else msg.points[0].accelerations[i]
+                            msg.points[0].effort[i] = action.points[0].effort[i] if action.points[0].effort[i] != joint_states.effort[joint_states.name.index(msg.joint_names[i])] else msg.points[0].effort[i]
             publishers[controller.name].publish(msg)
-        time.sleep(1/rate)
+        time.sleep(1.0/rate)
 
 # Save in actions_to_exec the joy bindings that should be used to send a command to a joint
 def bindingsOfJoy(msg):
@@ -127,9 +161,11 @@ def controllersFromYAML(yaml_mess):
 # Initialisations and other boring stuff
 def main():
     global controllers, kill, rate
-    rospy.init_node("jointstick_setup")
+    rospy.init_node("jointstick")
     config_file = rospy.get_param("config_file", "-")
-    config_file = "/home/gstavrinos/config_22-04-2019_15-52-40.yaml"
+    # TODO remove the test hardcoded confg files
+    #config_file = "/home/gstavrinos/config_22-04-2019_15-52-40.yaml"
+    config_file = "/home/gstavrinos/config_25-04-2019_01-18-36.yaml"
     if config_file == "-":
         print("No config file provided. Exiting...")
         return
