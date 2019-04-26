@@ -55,12 +55,14 @@ class Controller():
     type = ""
     joints = []
     joyActions = []
+    topic = ""
 
-    def __init__(self, n, t, ja, j):
+    def __init__(self, n, t, ja, j, tt):
         self.name = n
         self.type = t
         self.joyActions = ja
         self.joints = j
+        self.topic = tt
 
     def __repr__(self):
-        return "\nName: {},\nType: {},\nActions: {},\nJoints: {}\n".format(self.name, self.type, self.joyActions, self.joints)
+        return "\nName: {},\nType: {},\nActions: {},\nJoints: {},\nTopic: {}\n".format(self.name, self.type, self.joyActions, self.joints, self.topic)

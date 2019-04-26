@@ -45,6 +45,7 @@ def controllersToDict():
     for controller in controllers:
         if controller.joyActions:
             d[controller.name] = {"type": controller.type,
+                                    "topic": controller.topic,
                                     "actions": joyActionsToDict(controller.joyActions)
                                 }
     return d
@@ -245,7 +246,8 @@ def main():
     c = controllers_srv().controller
 
     for controller in c:
-        controllers.append(Controller(controller.name, controller.type, [], controller.claimed_resources[0].resources))
+        if controller.type != "joint_state_controller/JointStateController":
+            controllers.append(Controller(controller.name, controller.type, [], controller.claimed_resources[0].resources, controller.name+topic_extension[controller.type]))
 
     print("Done!")
 

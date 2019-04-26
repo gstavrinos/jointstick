@@ -39,10 +39,9 @@ def joyCallback(msg):
 # Initialize publisher objects for all controller with joy bindings
 def initPublishers():
     global publishers
-    # TODO incorporate topic names in joy action to allow for easy configuration
     for controller in controllers:
         publishers[controller.name] = rospy.Publisher(
-                        controller.name+topic_extension[controller.type],
+                        controller.topic,
                         controller_type_correspondence[controller.type],
                         queue_size=1)
 
@@ -111,8 +110,7 @@ def execCommands():
                 for action in actions[controller]:
                     if msg is None:
                         msg = JointTrajectory()
-                        # TODO investigate is stamp is needed
-                        # msg.header.stamp = rospy.Time.now()
+                        msg.header.stamp = rospy.Time.now()
                         msg.joint_names = action.joint_names
                         msg.points = action.points
                         msg.points[0].time_from_start = rospy.Duration(1.0/rate)
@@ -120,8 +118,7 @@ def execCommands():
                         for i in range(len(action.points[0].positions)):
                             msg.points[0].positions[i] = action.points[0].positions[i] if action.points[0].positions[i] != joint_states.position[joint_states.name.index(msg.joint_names[i])] else msg.points[0].positions[i]
                             msg.points[0].velocities[i] = action.points[0].velocities[i] if action.points[0].velocities[i] != joint_states.velocity[joint_states.name.index(msg.joint_names[i])] else msg.points[0].velocities[i]
-                            # TODO handle accelerations
-                            # msg.point.accelerations[i] = action.points[0].accelerations[i] if action.points[0].accelerations[i] != joint_states.acceleration[joint_states.name.index(msg.joint_names[i])] else msg.points[0].accelerations[i]
+                            msg.point.accelerations[i] = action.points[0].accelerations[i] if abs(action.points[0].accelerations[i]) > abs(joint_states.acceleration[joint_states.name.index(msg.joint_names[i])]) else msg.points[0].accelerations[i]
                             msg.points[0].effort[i] = action.points[0].effort[i] if action.points[0].effort[i] != joint_states.effort[joint_states.name.index(msg.joint_names[i])] else msg.points[0].effort[i]
             publishers[controller.name].publish(msg)
         time.sleep(1.0/rate)
@@ -156,23 +153,21 @@ def controllersFromYAML(yaml_mess):
             if controller.name == k:
                 for j in yaml_mess[k]["actions"]:
                     controller.joyActions.append(joyActionFromDict(yaml_mess[k]["actions"][j]))
+                controller.topic = yaml_mess[k]["topic"]
                 break
 
 # Initialisations and other boring stuff
 def main():
     global controllers, kill, rate
     rospy.init_node("jointstick")
-    config_file = rospy.get_param("config_file", "-")
-    # TODO remove the test hardcoded confg files
-    #config_file = "/home/gstavrinos/config_22-04-2019_15-52-40.yaml"
-    config_file = "/home/gstavrinos/config_25-04-2019_01-18-36.yaml"
+    config_file = rospy.get_param("~config_file", "-")
     if config_file == "-":
-        print("No config file provided. Exiting...")
+        print("No config file provided. Try using jointstick_setup first to create one, and then set it at the config.yaml file. Exiting...")
         return
     elif not os.path.isfile(config_file):
-        print("Config file {} not found. Exiting...").format(config_file)
+        print("Config file {} not found. Exiting..").format(config_file)
         return
-    rate = rospy.get_param("rate", 10)
+    rate = rospy.get_param("~rate", 10)
     controllers_srv = rospy.ServiceProxy("controller_manager/list_controllers", ListControllers)
 
     print("Reading available controllers....")
@@ -182,7 +177,7 @@ def main():
     c = controllers_srv().controller
 
     for controller in c:
-        controllers.append(Controller(controller.name, controller.type, [], controller.claimed_resources[0].resources))
+        controllers.append(Controller(controller.name, controller.type, [], controller.claimed_resources[0].resources, ""))
 
     print("Done!")
 
