@@ -50,7 +50,7 @@ def execCommands():
     while(not kill):
         actions = dict()
         for action, controller in actions_to_exec:
-            if controller.type == "diff_drive_controller/DiffDriveController":
+            if controller.type in twist_controllers:
                 msg = Twist()
                 if action.msg_field == "linear.x":
                     msg.linear.x = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
@@ -68,11 +68,11 @@ def execCommands():
                     actions[controller] = [msg]
                 else:
                     actions[controller].append(msg)
-            elif controller.type == "effort_controllers/JointPositionController":
+            elif controller.type in float_controllers:
                 v = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
                 stepIt = joint_states.position[joint_states.name.index(action.joint)] + v
                 publishers[controller.name].publish(stepIt)
-            elif controller.type == "position_controllers/JointTrajectoryController":
+            elif controller.type in joint_traj_controllers:
                 msg = JointTrajectory()
                 msg.points.append(JointTrajectoryPoint())
                 v = action.value if action.axis == -1 else joy_msg.axes[action.axis] * action.value
@@ -97,7 +97,7 @@ def execCommands():
 
         for controller in actions:
             msg = None
-            if controller.type == "diff_drive_controller/DiffDriveController":
+            if controller.type in twist_controllers:
                 msg = Twist()
                 for action in actions[controller]:
                     msg.linear.x = action.linear.x if abs(action.linear.x) > abs(msg.linear.x) else msg.linear.x
@@ -106,7 +106,7 @@ def execCommands():
                     msg.angular.x = action.angular.x if abs(action.angular.x) > abs(msg.angular.x) else msg.angular.x
                     msg.angular.y = action.angular.y if abs(action.angular.y) > abs(msg.angular.y) else msg.angular.y
                     msg.angular.z = action.angular.z if abs(action.angular.z) > abs(msg.angular.z) else msg.angular.z
-            elif controller.type == "position_controllers/JointTrajectoryController":
+            elif controller.type in joint_traj_controllers:
                 for action in actions[controller]:
                     if msg is None:
                         msg = JointTrajectory()
