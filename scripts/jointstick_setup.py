@@ -11,6 +11,11 @@ from controller_manager_msgs.srv import ListControllers
 from helper import *
 from controllers_info import *
 
+try: 
+    import msvcrt
+except ImportError:
+    import sys, termios
+
 ui = [None] # mutable hack. Thanks python!
 
 # Translate Twist message fields to selection text
@@ -95,12 +100,15 @@ def youTalkinToMeAboutFloats(prompt):
 def youTalkinToMeAboutThreads(prompt):
     global ui
     print(prompt)
-    try:
-        # Python 2
-        ui[0] = raw_input()
-    except:
-        # Python 3
-        ui[0] = input()
+    while(read_joy):
+        if saved_buti != -1 or saved_axi != -1:
+            flush()
+            try:
+                # Python 2
+                ui[0] = raw_input()
+            except:
+                # Python 3
+                ui[0] = input()
 
 # Translate user joystick input to human readable text
 # Also, offer the expected behaviour when unpressing buttons/axes
@@ -144,6 +152,14 @@ def joyCallback(msg):
 # OS agnostic terminal clearance
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
+
+# OS agnostic terminal flushing
+def flush():
+    try:
+        while msvcrt.kbhit():
+            msvcrt.getch()
+    except:
+        termios.tcflush(sys.stdin, termios.TCIOFLUSH)
 
 # The main setup procedure
 def configureJoyActions():
