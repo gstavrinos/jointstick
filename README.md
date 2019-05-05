@@ -12,7 +12,15 @@ The first step before teleoperating your robot, is to create some joystick bindi
 
 During setup the script will guide you through the process via messages in the console. When using the setup script for the first time(s) pay attention to the console messages to avoid wrong bindings.
 
-TODO add screnshots here
+As an example, two screenshots from the setup script as shown below, while creating bindings for a UR3 robot arm.
+
+<img src="https://raw.githubusercontent.com/gstavrinos/jointstick/master/images/jointstick_setup1.png" width=60%>
+
+<img src="https://raw.githubusercontent.com/gstavrinos/jointstick/master/images/jointstick_setup2.png" width=60%>
+
+
+(Notice that in this screenshot the user is wrongly prompted twice to select a category. This is a known bug. Please send a PR or comment on the corresponding issue <a href="https://github.com/gstavrinos/jointstick/issues/1" target="_blank">[#1]</a> with your ideas.)
+
 
 The setup script uses the `jointstick_setup/config_file` param to know where to save the file that contains your joystick bindings. If not such parameter is found, the config file is saved in your home directory. The configuration file name always contains the date and time of creation.
 
