@@ -67,6 +67,7 @@ def save():
 # Python agnostic user input with accepted answers support
 def youTalkinToMe(prompt, accepted_ans):
     while(True):
+        flush()
         print(prompt)
         if accepted_ans:
             print("(Accepted answers: {})".format(accepted_ans))
@@ -83,6 +84,7 @@ def youTalkinToMe(prompt, accepted_ans):
 # Python agnostic user input for floats
 def youTalkinToMeAboutFloats(prompt):
     while(True):
+        flush()
         print(prompt)
         inp = ""
         try:
@@ -101,8 +103,8 @@ def youTalkinToMeAboutThreads(prompt):
     global ui
     print(prompt)
     while(read_joy):
+        flush()
         if saved_buti != -1 or saved_axi != -1:
-            flush()
             try:
                 # Python 2
                 ui[0] = raw_input()
@@ -209,7 +211,7 @@ def configureJoyActions():
                                 ans = youTalkinToMe(twistToText(), list(twisty_dict.keys()))
                                 msg_field = twisty_dict[ans]
                             elif controller.type in joint_traj_controllers:
-                                ans = youTalkinToMe(jointTrajToText(), list(map(str,twisty_dict.keys())))
+                                ans = youTalkinToMe(jointTrajToText(), list(jt_dict.keys()))
                                 msg_field = jt_dict[ans]
 
                             val = -1
@@ -231,6 +233,9 @@ def configureJoyActions():
                             saved_axi = -1
                             if controller.type in ignore_controller_joints:
                                 break
+                        elif ans in QUIT:
+                            keepItUp = False
+                            return
                 elif ans in NO:
                     break
 
