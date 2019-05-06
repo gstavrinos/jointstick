@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>jointstick</name>
-  <version>0.9.0</version>
+  <version>0.9.1</version>
   <description>Move any joint with any controller!</description>
 
   <author email="stavrinosgeo@gmail.com">George Stavrinos</author>

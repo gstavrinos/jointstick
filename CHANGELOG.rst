@@ -2,6 +2,6 @@
 Changelog for package jointstick
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.9.1 (2019-05-06)
+------------------
 * First release
